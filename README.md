@@ -2,13 +2,43 @@
 
 **Know your cash before your clients pay.**
 
-DuePilot is a cash-planning and receivables application for independent Indian wedding photographers and small studios. It helps owners decide which invoice needs follow-up and whether the timing of incoming money will cover rent, equipment and freelancers. The project continues the existing Codebenders workspace for the ACE Builders Hackathon 2026, Problem Statement 1, The One-Person Back Office.
+DuePilot helps independent Indian wedding photographers and small studios see whether expected payments will cover their next bills. Track invoices and receipts, model a delay and prepare a client follow-up before cash runs short.
 
-[Open the live application](https://duepilot-studio-ace.vercel.app/)
+**ACE Builders Hackathon 2026 · The One-Person Back Office**
+
+[Open DuePilot](https://duepilot-studio-ace.vercel.app/) · [Three-minute judge walkthrough](docs/DEMO_SCRIPT.md) · [Architecture and data model](docs/ARCHITECTURE.md) · [Verification record](docs/TEST_RESULTS.md)
+
+![DuePilot studio dashboard showing ₹18,000 recorded cash, outstanding invoices, scheduled bills, and a cash forecast](docs/media/dashboard.jpg)
+
+## One late payment changes the month
+
+In the live demo, Aperture Studio expects a ₹35,000 payment from Arjun & Ananya on 27 November. It has ₹25,000 in equipment rental due on 1 December. Move the expected receipt to 12 December to see the impact on the same ledger.
+
+| Scenario Lab result | Baseline | Receipt delayed by 15 days |
+| --- | ---: | ---: |
+| Lowest projected cash | ₹17,000 | −₹18,000 |
+| First shortfall | None | 1 December |
+| Days ending below zero | 0 | 9 |
+
+![Scenario Lab compares the baseline and delayed payment, with a projected shortfall of ₹18,000 and equipment rental among the affected obligations](docs/media/scenario-result.jpg)
+
+The dashboard, scenario and invoice below are captured from the deployed app using fictional demo data. Scenarios leave the recorded invoice and payment history intact.
 
 ## Try the demonstration
 
-Choose **Explore live demo** on the landing page. You receive a private Sample Studio with fictional records, a planning date of 21 November 2026, and ₹18,000 opening cash. Open **Scenario Lab** and select **Delay by 15 days** for Arjun & Ananya. The lowest balance moves from ₹17,000 to −₹18,000. Settings can restore the original demo records. Use signup for a separate personal studio. [Three-minute walkthrough](docs/DEMO_SCRIPT.md)
+1. Choose **Explore live demo**. Aperture Studio opens with ₹18,000 in opening cash and a planning date of 21 November 2026.
+2. Open **Scenario Lab** and select **Delay by 15 days** for Arjun & Ananya.
+3. Review the affected bills and select **Prepare a client follow-up**. DuePilot pre-fills a reminder you can edit and copy.
+4. Use **Reset scenario** to return to the baseline. Studio settings can restore all sample records.
+
+<details>
+<summary>See the invoice and editable reminder</summary>
+
+![Invoice INV-0001 for ₹55,000 with a ₹20,000 recorded payment and a ₹35,000 outstanding balance](docs/media/invoice.jpg)
+
+![Editable reminder referencing invoice INV-0001 and its ₹35,000 outstanding balance](docs/media/reminder.jpg)
+
+</details>
 
 ## Working features
 
