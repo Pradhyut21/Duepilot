@@ -1,7 +1,6 @@
 'use server';
 
 import { cookies, headers } from 'next/headers';
-import { revalidatePath } from 'next/cache';
 import { getDb } from '../../../lib/db/client';
 import { and, eq } from 'drizzle-orm';
 import { expenses, projects, activities } from '../../../lib/db/schema';
@@ -169,6 +168,5 @@ export async function createExpense(
       });
   });
 
-  revalidatePath('/app/expenses');
   return { notice: 'Bill saved.' };
 }

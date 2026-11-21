@@ -14,7 +14,14 @@ export function ExpenseForm({
 }: {
   projects?: { id: string; name: string }[];
 }) {
-  const [state, formAction] = useActionState(createExpense, initialState);
+  const [state, formAction] = useActionState(
+    async (previous: ExpenseFormState, fields: FormData) => {
+      const result = await createExpense(previous, fields);
+      if (result.notice) window.location.reload();
+      return result;
+    },
+    initialState,
+  );
   const recurrenceError = state.fieldErrors?.recurrenceRule;
 
   return (
