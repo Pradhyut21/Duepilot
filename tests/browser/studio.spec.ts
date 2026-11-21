@@ -77,10 +77,11 @@ test('private account, ledger, forecast, reminder, persistence and sign-in', asy
   await reminder.fill(
     'Follow-up on INV-0001 for ₹1,000.25. Please confirm your date.',
   );
-  await page.getByRole('button', { name: 'Save reminder' }).click();
-  await expect(page.locator('#reminder').getByText('Saved.', {exact:true})).toHaveText(
-    'Saved.',
-  );
+  await Promise.all([
+    page.waitForNavigation({waitUntil:'domcontentloaded'}),
+    page.getByRole('button',{name:'Save reminder'}).click()
+  ]);
+  await expect(reminder).toHaveValue('Follow-up on INV-0001 for ₹1,000.25. Please confirm your date.');
   await page.getByRole('button', { name: 'Copy reminder' }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
     '₹1,000.25',

@@ -16,7 +16,7 @@ Verification ran on 21 November 2026 in the existing Windows workspace and again
 | Hosted `npm run test:e2e` with `TEST_BASE_URL=https://duepilot-studio-ace.vercel.app` | **4 of 4 journeys passed** on the public origin, including account persistence across logout and re-login. |
 | Anonymous HTTP checks on the public origin | The landing page returned 200. The studio export returned 401. |
 
-Vercel reported production deployment `dpl_C663VwPQPc94M9LC7Rip1WyroUEP` as Ready with the stable alias [duepilot-studio-ace.vercel.app](https://duepilot-studio-ace.vercel.app/). The CLI lost a polling connection during the build. A separate deployment inspection confirmed its terminal status and alias.
+Vercel reported production deployment `dpl_9BTA3rCFQvyCUTBjJxhTpxyjRdDH` as Ready with the stable alias [duepilot-studio-ace.vercel.app](https://duepilot-studio-ace.vercel.app/). The CLI lost a polling connection during the build. A separate deployment inspection confirmed its terminal status and alias.
 
 ## Financial regression
 
@@ -31,7 +31,7 @@ Additional coverage includes print-to-PDF bytes, multi-line draft revision and t
 ## Issues found during verification
 
 - An early browser run exposed malformed SQL in invoice-number assignment. Corrected the statement and verified creation, issuance and payment through the deployed UI.
-- Repeated browser runs showed same-page redirects could leave a saved form pending. Client creation now opens the saved account. Bill saves, oldest-due payment allocation and draft edits return in place and revalidate affected views.
+- Repeated browser runs showed same-page redirects could leave a saved form pending. Client creation now opens the saved account. Bill saves, oldest-due payment allocation and draft edits return in place and revalidate affected views. Studio API forms load a fresh document after the database confirms a write, preventing a cached client tree from briefly showing an older invoice status.
 - Adjusted test selectors to target the client combobox and the specific reminder save confirmation. A transient connection reset during a cross-origin rejection check was retried using a fresh connection.
 - Limited local test concurrency and allowed more time for the networked database integration tests after an overloaded run exceeded the original five-second timeout.
 

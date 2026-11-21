@@ -1,3 +1,4 @@
+import { SaveNotice } from '@/components/forms/StudioForm';
 import { redirect } from 'next/navigation';
 import { Aperture, LogOut } from 'lucide-react';
 import { sessionForRequest } from '@/lib/studio/data';
@@ -39,7 +40,7 @@ export default async function AppLayout({
           </form>
         </header>
         <AppNav variant="top" />
-        <main>{children}</main>
+        <main><SaveNotice />{children}</main>
       </div>
     </div>
   );

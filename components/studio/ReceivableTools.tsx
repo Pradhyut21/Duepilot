@@ -18,7 +18,7 @@ export function Receive({
     <StudioForm
       action="payment"
       label="Record confirmed payment"
-      after={() => setKey(crypto.randomUUID())}
+
     >
       <Hidden name="id" value={id} />
       <input type="hidden" name="key" value={key} />
@@ -246,7 +246,7 @@ export function PromiseNote({
           <StudioForm
             action="promise"
             label="Confirm payment promise"
-            after={() => setProposal(null)}
+
           >
             <Hidden name="id" value={id} />
             <Hidden name="source" value={source} />
@@ -280,7 +280,7 @@ export function PromiseNote({
           <StudioForm
             action="note.reject"
             label="Reject proposed fields"
-            after={() => setProposal(null)}
+
           >
             <Hidden name="id" value={id} />
             <Hidden name="source" value={source} />
