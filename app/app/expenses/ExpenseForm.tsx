@@ -9,13 +9,18 @@ import { SubmitButton } from '../../../components/auth/SubmitButton';
 const initialState: ExpenseFormState = {};
 
 /** Create-expense form. Errors and entered values come back from createExpense. */
-export function ExpenseForm() {
+export function ExpenseForm({
+  projects = [],
+}: {
+  projects?: { id: string; name: string }[];
+}) {
   const [state, formAction] = useActionState(createExpense, initialState);
   const recurrenceError = state.fieldErrors?.recurrenceRule;
 
   return (
     <form action={formAction} className="space-y-4" noValidate>
       <FormError message={state.formError} />
+      {state.notice && <p role="status" className="success">{state.notice}</p>}
 
       <Input
         id="expense-description"
@@ -59,7 +64,10 @@ export function ExpenseForm() {
       />
 
       <div className="space-y-1">
-        <label htmlFor="expense-recurrence" className="block text-sm font-medium text-ink">
+        <label
+          htmlFor="expense-recurrence"
+          className="block text-sm font-medium text-ink"
+        >
           Recurrence
         </label>
         <select
@@ -67,7 +75,9 @@ export function ExpenseForm() {
           name="recurrenceRule"
           defaultValue={state.values?.recurrenceRule ?? ''}
           aria-invalid={recurrenceError ? true : undefined}
-          aria-describedby={recurrenceError ? 'expense-recurrence-error' : undefined}
+          aria-describedby={
+            recurrenceError ? 'expense-recurrence-error' : undefined
+          }
           className={[
             'block w-full rounded-lg border bg-white px-3 py-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
             recurrenceError ? 'border-negative' : 'border-slate-300',
@@ -84,6 +94,21 @@ export function ExpenseForm() {
         ) : null}
       </div>
 
+      <label>
+        Associated project
+        <select name="projectId">
+          <option value="">No project</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Notes
+        <textarea name="notes" maxLength={2000} />
+      </label>
       <SubmitButton pendingText="Saving…">Save expense</SubmitButton>
     </form>
   );

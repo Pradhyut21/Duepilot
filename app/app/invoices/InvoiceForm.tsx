@@ -1,103 +1,205 @@
 'use client';
-
-import { useActionState } from 'react';
+import { useState, useActionState } from 'react';
 import { createInvoice, type InvoiceFormState } from './actions';
-import { Input } from '../../../components/ui/Input';
-import { FormError } from '../../../components/ui/FormError';
-import { SubmitButton } from '../../../components/auth/SubmitButton';
-
-const initialState: InvoiceFormState = {};
-
+import { SubmitButton } from '@/components/auth/SubmitButton';
 export type InvoiceClientOption = { id: string; name: string };
-
-/** Create-invoice form with one line item. Errors and entered values come back from createInvoice. */
-export function InvoiceForm({ clients }: { clients: InvoiceClientOption[] }) {
-  const [state, formAction] = useActionState(createInvoice, initialState);
-  const clientError = state.fieldErrors?.clientId;
-
+type Line = {
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  taxRate: string;
+};
+type Installment = {
+  name: string;
+  amount: string;
+  due: string;
+  expected: string;
+};
+type Draft = {
+  id: string;
+  clientId: string;
+  number: string;
+  issue: string;
+  due: string;
+  project: string;
+  lines: Line[];
+  milestones: Installment[];
+};
+export function InvoiceForm({
+  clients,
+  today,
+  draft,
+}: {
+  clients: InvoiceClientOption[];
+  today?: string;
+  draft?: Draft;
+}) {
+  const [state, act] = useActionState(createInvoice, {} as InvoiceFormState),
+    [lines, setLines] = useState(
+      draft?.lines ?? [
+        { description: '', quantity: '1', unitPrice: '', taxRate: '' },
+      ],
+    ),
+    [milestones, setMilestones] = useState<Installment[]>(
+      draft?.milestones ?? [],
+    );
   return (
-    <form action={formAction} className="space-y-4" noValidate>
-      <FormError message={state.formError} />
-
-      <div className="space-y-1">
-        <label htmlFor="invoice-client" className="block text-sm font-medium text-ink">
-          Client
-        </label>
-        <select
-          id="invoice-client"
-          name="clientId"
-          required
-          defaultValue={state.values?.clientId ?? ''}
-          aria-invalid={clientError ? true : undefined}
-          className={`block w-full rounded-lg border bg-white px-3 py-2 text-sm text-ink ${
-            clientError ? 'border-negative' : 'border-slate-300'
-          }`}
-        >
-          <option value="" disabled>
-            Choose a client
-          </option>
-          {clients.map((client) => (
-            <option key={client.id} value={client.id}>
-              {client.name}
+    <form action={act} className="formgrid">
+      <p role="alert" className="error">
+        {state.formError || Object.values(state.fieldErrors ?? {}).join(' ')}
+      </p>
+      <input type="hidden" name="id" value={draft?.id ?? ''} />
+      <label>
+        Client
+        <select name="clientId" required defaultValue={draft?.clientId ?? ''}>
+          <option value="">Choose a client</option>
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
             </option>
           ))}
         </select>
-        {clientError ? <p className="text-sm text-negative">{clientError}</p> : null}
+      </label>
+      <div className="pair">
+        <label>
+          Invoice number
+          <input
+            name="number"
+            defaultValue={draft?.number}
+            placeholder="Assigned on save"
+            maxLength={80}
+          />
+        </label>
+        <label>
+          Project (optional)
+          <input name="project" defaultValue={draft?.project} maxLength={120} />
+        </label>
       </div>
-
-      <Input
-        id="invoice-due-date"
-        name="dueDate"
-        type="date"
-        label="Due date"
-        required
-        defaultValue={state.values?.dueDate}
-        error={state.fieldErrors?.dueDate}
+      <div className="pair">
+        <label>
+          Issue date
+          <input
+            type="date"
+            name="issue"
+            defaultValue={draft?.issue ?? today}
+            required
+          />
+        </label>
+        <label>
+          Due date
+          <input
+            type="date"
+            name="dueDate"
+            defaultValue={draft?.due}
+            required
+          />
+        </label>
+      </div>
+      {lines.map((line, i) => (
+        <fieldset key={i} className="inset">
+          <legend>Line item {i + 1}</legend>
+          <div className="pair">
+            {(['description', 'quantity', 'unitPrice', 'taxRate'] as const).map(
+              (key, j) => (
+                <label key={key}>
+                  {
+                    ['Description', 'Quantity', 'Unit price (₹)', 'Tax rate %'][
+                      j
+                    ]
+                  }
+                  <input
+                    name={'items.' + i + '.' + key}
+                    required={key !== 'taxRate'}
+                    value={line[key]}
+                    onChange={(e) =>
+                      setLines(
+                        lines.map((v, k) =>
+                          k === i ? { ...v, [key]: e.target.value } : v,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+              ),
+            )}
+          </div>
+          {lines.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setLines(lines.filter((_, k) => k !== i))}
+            >
+              Remove line
+            </button>
+          )}
+        </fieldset>
+      ))}
+      <button
+        type="button"
+        className="textbtn"
+        onClick={() =>
+          setLines([
+            ...lines,
+            { description: '', quantity: '1', unitPrice: '', taxRate: '' },
+          ])
+        }
+      >
+        + Add line item
+      </button>
+      {milestones.map((m, i) => (
+        <fieldset className="inset" key={i}>
+          <legend>Milestone {i + 1}</legend>
+          <div className="pair">
+            {(['name', 'amount', 'due', 'expected'] as const).map((k, j) => (
+              <label key={k}>
+                {
+                  [
+                    'Milestone name',
+                    'Amount (₹)',
+                    'Milestone due',
+                    'Confirmed expected date (optional)',
+                  ][j]
+                }
+                <input
+                  type={j > 1 ? 'date' : 'text'}
+                  required={k !== 'expected'}
+                  value={m[k]}
+                  onChange={(e) =>
+                    setMilestones(
+                      milestones.map((v, n) =>
+                        n === i ? { ...v, [k]: e.target.value } : v,
+                      ),
+                    )
+                  }
+                />
+              </label>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setMilestones(milestones.filter((_, n) => n !== i))}
+          >
+            Remove milestone
+          </button>
+        </fieldset>
+      ))}
+      <input
+        type="hidden"
+        name="milestones"
+        value={JSON.stringify(milestones)}
       />
-
-      <fieldset className="space-y-4 rounded-lg border border-slate-200 p-4">
-        <legend className="px-1 text-sm font-medium text-ink">First line item</legend>
-
-        <Input
-          id="invoice-item-description"
-          name="items.0.description"
-          label="Description"
-          required
-          maxLength={500}
-          defaultValue={state.values?.description}
-        />
-
-        <Input
-          id="invoice-item-quantity"
-          name="items.0.quantity"
-          inputMode="decimal"
-          label="Quantity"
-          required
-          maxLength={16}
-          defaultValue={state.values?.quantity ?? '1'}
-        />
-
-        <Input
-          id="invoice-item-unit-price"
-          name="items.0.unitPrice"
-          inputMode="decimal"
-          label="Unit price (₹)"
-          required
-          maxLength={16}
-          defaultValue={state.values?.unitPrice}
-        />
-
-        <Input
-          id="invoice-item-tax-rate"
-          name="items.0.taxRate"
-          inputMode="decimal"
-          label="Tax rate % (optional)"
-          maxLength={6}
-          defaultValue={state.values?.taxRate}
-        />
-      </fieldset>
-
-      <SubmitButton pendingText="Saving…">Save invoice</SubmitButton>
+      <button
+        type="button"
+        className="textbtn"
+        onClick={() =>
+          setMilestones([
+            ...milestones,
+            { name: '', amount: '', due: '', expected: '' },
+          ])
+        }
+      >
+        + Add payment milestone
+      </button>
+      <SubmitButton pendingText="Saving…">Save draft</SubmitButton>
     </form>
   );
 }

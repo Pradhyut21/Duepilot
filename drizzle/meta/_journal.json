@@ -8,6 +8,20 @@
       "when": 1795250097935,
       "tag": "0000_same_abomination",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795256725258,
+      "tag": "0001_demonic_venom",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795258334481,
+      "tag": "0002_same_infant_terrible",
+      "breakpoints": true
     }
   ]
 }

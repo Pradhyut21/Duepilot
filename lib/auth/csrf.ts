@@ -6,7 +6,7 @@
 export function isSameOriginRequest(headers: Headers, appUrl: string): boolean {
   let expectedHost: string;
   try {
-    expectedHost = new URL(appUrl).host;
+    expectedHost = new URL(appUrl).origin;
   } catch {
     return false;
   }
@@ -17,7 +17,7 @@ export function isSameOriginRequest(headers: Headers, appUrl: string): boolean {
   }
 
   try {
-    return new URL(candidate).host === expectedHost;
+    return new URL(candidate).origin === expectedHost;
   } catch {
     return false;
   }

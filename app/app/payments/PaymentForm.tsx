@@ -17,7 +17,10 @@ export type PaymentClientOption = {
 
 /** One submission key per form render, so a double-submit maps to the same payment. */
 function createSubmissionKey(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID();
   }
   // Fallback for non-secure origins (e.g. plain http on a LAN address), where randomUUID is absent.
@@ -25,24 +28,35 @@ function createSubmissionKey(): string {
   crypto.getRandomValues(bytes);
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(
+    '',
+  );
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 /** Record-payment form. Errors and entered values come back from recordPayment. */
 export function PaymentForm({ clients }: { clients: PaymentClientOption[] }) {
-  const [state, formAction] = useActionState(recordPayment, initialState);
-  const [submissionKey] = useState(createSubmissionKey);
+  const [submissionKey, setSubmissionKey] = useState(createSubmissionKey);
+  const [state, formAction] = useActionState(async (previous: PaymentFormState, fields: FormData) => {
+    const result = await recordPayment(previous, fields);
+    if (result.recorded) setSubmissionKey(createSubmissionKey());
+    return result;
+  }, initialState);
   const clientError = state.fieldErrors?.clientId;
 
   return (
     <form action={formAction} className="space-y-4" noValidate>
       <input type="hidden" name="submissionKey" value={submissionKey} />
       <FormError message={state.formError} />
-      {state.notice ? <p className="text-sm text-slate-600">{state.notice}</p> : null}
+      {state.notice ? (
+        <p className="text-sm text-slate-600">{state.notice}</p>
+      ) : null}
 
       <div className="space-y-1">
-        <label htmlFor="payment-client" className="block text-sm font-medium text-ink">
+        <label
+          htmlFor="payment-client"
+          className="block text-sm font-medium text-ink"
+        >
           Client
         </label>
         <select
@@ -64,7 +78,9 @@ export function PaymentForm({ clients }: { clients: PaymentClientOption[] }) {
             </option>
           ))}
         </select>
-        {clientError ? <p className="text-sm text-negative">{clientError}</p> : null}
+        {clientError ? (
+          <p className="text-sm text-negative">{clientError}</p>
+        ) : null}
       </div>
 
       <Input
@@ -107,6 +123,10 @@ export function PaymentForm({ clients }: { clients: PaymentClientOption[] }) {
         error={state.fieldErrors?.reference}
       />
 
+      <label className="check">
+        <input type="checkbox" name="confirmed" required />I confirm receipt.
+        Allocate this payment to the oldest due invoices first.
+      </label>
       <SubmitButton pendingText="Saving…">Record payment</SubmitButton>
     </form>
   );

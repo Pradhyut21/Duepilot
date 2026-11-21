@@ -6,7 +6,10 @@ import { revalidatePath } from 'next/cache';
 import { getDb } from '../../../lib/db/client';
 import { clients } from '../../../lib/db/schema';
 import { getEnv } from '../../../lib/env';
-import { SESSION_COOKIE_NAME, validateSession } from '../../../lib/auth/session';
+import {
+  SESSION_COOKIE_NAME,
+  validateSession,
+} from '../../../lib/auth/session';
 import { isSameOriginRequest } from '../../../lib/auth/csrf';
 
 export type ClientFieldErrors = Partial<Record<'name', string>>;
@@ -18,7 +21,8 @@ export type ClientFormState = {
   values?: { name?: string; email?: string; phone?: string; notes?: string };
 };
 
-const REQUEST_REJECTED_MESSAGE = 'Your request could not be verified. Refresh the page and try again.';
+const REQUEST_REJECTED_MESSAGE =
+  'Your request could not be verified. Refresh the page and try again.';
 const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Log in again.';
 const NO_BUSINESS_MESSAGE = 'Your account is not linked to a business yet.';
 const NAME_REQUIRED_MESSAGE = 'Enter a client name.';
@@ -79,14 +83,27 @@ export async function createClient(
     return { formError: NO_BUSINESS_MESSAGE, values };
   }
 
-  await getDb().insert(clients).values({
-    businessId: session.business.businessId,
-    name,
-    email: optionalField(values.email),
-    phone: optionalField(values.phone),
-    notes: optionalField(values.notes),
-  });
+  if (
+    name.length > 180 ||
+    values.phone.length > 40 ||
+    values.notes.length > 2500 ||
+    (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email))
+  )
+    return {
+      formError: 'Check the contact details and field lengths.',
+      values,
+    };
+  const [created] = await getDb()
+    .insert(clients)
+    .values({
+      businessId: session.business.businessId,
+      name,
+      email: optionalField(values.email),
+      phone: optionalField(values.phone),
+      notes: optionalField(values.notes),
+    })
+    .returning({ id: clients.id });
 
   revalidatePath('/app/clients');
-  redirect('/app/clients');
+  redirect('/app/clients/' + created.id);
 }

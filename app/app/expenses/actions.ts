@@ -1,22 +1,29 @@
 'use server';
 
 import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getDb } from '../../../lib/db/client';
-import { expenses } from '../../../lib/db/schema';
+import { and, eq } from 'drizzle-orm';
+import { expenses, projects, activities } from '../../../lib/db/schema';
 import { getEnv } from '../../../lib/env';
-import { SESSION_COOKIE_NAME, validateSession } from '../../../lib/auth/session';
+import {
+  SESSION_COOKIE_NAME,
+  validateSession,
+} from '../../../lib/auth/session';
 import { isSameOriginRequest } from '../../../lib/auth/csrf';
 import { parseRupeesToPaise } from '../../../lib/money';
 import { isValidIsoDate, mapRecurrenceRule } from '../../../lib/records/rules';
 
 export type ExpenseFieldErrors = Partial<
-  Record<'description' | 'category' | 'amount' | 'dueDate' | 'recurrenceRule', string>
+  Record<
+    'description' | 'category' | 'amount' | 'dueDate' | 'recurrenceRule',
+    string
+  >
 >;
 
 /** Typed result returned to the client form. */
 export type ExpenseFormState = {
+  notice?: string;
   formError?: string;
   fieldErrors?: ExpenseFieldErrors;
   values?: {
@@ -28,7 +35,8 @@ export type ExpenseFormState = {
   };
 };
 
-const REQUEST_REJECTED_MESSAGE = 'Your request could not be verified. Refresh the page and try again.';
+const REQUEST_REJECTED_MESSAGE =
+  'Your request could not be verified. Refresh the page and try again.';
 const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Log in again.';
 const NO_BUSINESS_MESSAGE = 'Your account is not linked to a business yet.';
 const DESCRIPTION_REQUIRED_MESSAGE = 'Enter a description.';
@@ -79,7 +87,8 @@ export async function createExpense(
   const dueDate = values.dueDate.trim();
 
   const fieldErrors: ExpenseFieldErrors = {};
-  if (description === '') fieldErrors.description = DESCRIPTION_REQUIRED_MESSAGE;
+  if (description === '')
+    fieldErrors.description = DESCRIPTION_REQUIRED_MESSAGE;
   if (category === '') fieldErrors.category = CATEGORY_REQUIRED_MESSAGE;
 
   let amountPaise = 0;
@@ -94,7 +103,11 @@ export async function createExpense(
 
   const recurrenceChoice = values.recurrenceRule;
   let recurrenceRule: ReturnType<typeof mapRecurrenceRule> = null;
-  if (recurrenceChoice === '' || recurrenceChoice === 'MONTHLY' || recurrenceChoice === 'WEEKLY') {
+  if (
+    recurrenceChoice === '' ||
+    recurrenceChoice === 'MONTHLY' ||
+    recurrenceChoice === 'WEEKLY'
+  ) {
     recurrenceRule = mapRecurrenceRule(recurrenceChoice);
   } else {
     fieldErrors.recurrenceRule = RECURRENCE_INVALID_MESSAGE;
@@ -113,16 +126,49 @@ export async function createExpense(
     return { formError: NO_BUSINESS_MESSAGE, values };
   }
 
-  await getDb().insert(expenses).values({
-    businessId: session.business.businessId,
-    description,
-    category,
-    amountPaise,
-    dueDate,
-    status: 'UNPAID',
-    recurrenceRule,
+  const b = session.business.businessId,
+    projectId = readField(formData, 'projectId'),
+    notes = readField(formData, 'notes').trim();
+  if (description.length > 200 || category.length > 100 || notes.length > 2000)
+    return { formError: 'Bill fields exceed their size limit.', values };
+  if (
+    projectId &&
+    (!/^[a-f0-9-]{36}$/i.test(projectId) ||
+      !(
+        await getDb()
+          .select()
+          .from(projects)
+          .where(and(eq(projects.id, projectId), eq(projects.businessId, b)))
+      ).length)
+  )
+    return { formError: 'Choose a project in this studio.', values };
+  await getDb().transaction(async (tx) => {
+    const [e] = await tx
+      .insert(expenses)
+      .values({
+        businessId: b,
+        projectId: projectId || null,
+        notes,
+        description,
+        category,
+        amountPaise,
+        dueDate,
+        status: 'UNPAID',
+        recurrenceRule,
+      })
+      .returning();
+    await tx
+      .insert(activities)
+      .values({
+        businessId: b,
+        actorUserId: session.user.id,
+        eventType: 'Bill scheduled',
+        entityType: 'expense',
+        entityId: e.id,
+        afterJson: { amount: amountPaise, description },
+      });
   });
 
   revalidatePath('/app/expenses');
-  redirect('/app/expenses');
+  return { notice: 'Bill saved.' };
 }

@@ -8,33 +8,46 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node --import ./scripts/env.mjs ./node_modules/vitest/vitest.mjs run",
+    "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx lib/db/migrate.ts"
+    "db:migrate": "node --import ./scripts/env.mjs --import tsx lib/db/migrate.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "drizzle-orm": "^0.45.2",
+    "lucide-react": "^0.577.0",
     "next": "^15.3.0",
+    "pg": "^8.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "pg": "^8.13.1",
-    "drizzle-orm": "^0.44.2",
-    "zod": "^3.24.4",
-    "bcryptjs": "^3.0.2"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
-    "typescript": "^5.8.3",
+    "@playwright/test": "^1.65.1",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.15.0",
+    "@types/pg": "^8.11.14",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "@types/pg": "^8.11.14",
-    "@types/bcryptjs": "^2.4.6",
-    "tailwindcss": "^3.4.17",
-    "postcss": "^8.5.3",
     "autoprefixer": "^10.4.21",
     "drizzle-kit": "^0.31.1",
-    "tsx": "^4.19.4",
-    "vitest": "^3.1.3",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^15.3.0"
+    "eslint-config-next": "^15.3.0",
+    "postcss": "^8.5.23",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.11",
+    "esbuild": "0.28.2"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "overrides": {
+    "postcss": "$postcss",
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
   }
 }

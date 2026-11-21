@@ -3,11 +3,24 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../../../lib/db/client';
-import { clients, invoiceItems, invoices } from '../../../lib/db/schema';
+import {
+  clients,
+  invoiceItems,
+  invoices,
+  businesses,
+  projects,
+  activities,
+  paymentMilestones,
+} from '../../../lib/db/schema';
+import { z } from 'zod';
+import { todayInTimezone } from '@/lib/records/invoice-dates';
 import { getEnv } from '../../../lib/env';
-import { SESSION_COOKIE_NAME, validateSession } from '../../../lib/auth/session';
+import {
+  SESSION_COOKIE_NAME,
+  validateSession,
+} from '../../../lib/auth/session';
 import { isSameOriginRequest } from '../../../lib/auth/csrf';
 import { scopeByBusiness } from '../../../lib/auth/tenant';
 import { MAX_PAISE, parseRupeesToPaise } from '../../../lib/money';
@@ -20,7 +33,9 @@ import {
   parseTaxRateBp,
 } from '../../../lib/records/rules';
 
-export type InvoiceFieldErrors = Partial<Record<'clientId' | 'dueDate', string>>;
+export type InvoiceFieldErrors = Partial<
+  Record<'clientId' | 'dueDate', string>
+>;
 
 /** Typed result returned to the invoice form. */
 export type InvoiceFormState = {
@@ -44,7 +59,8 @@ type ParsedItem = {
   lineTotalPaise: number;
 };
 
-const REQUEST_REJECTED_MESSAGE = 'Your request could not be verified. Refresh the page and try again.';
+const REQUEST_REJECTED_MESSAGE =
+  'Your request could not be verified. Refresh the page and try again.';
 const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Log in again.';
 const NO_BUSINESS_MESSAGE = 'Your account is not linked to a business yet.';
 const CLIENT_REQUIRED_MESSAGE = 'Choose a client.';
@@ -53,7 +69,8 @@ const DUE_DATE_MESSAGE = 'Enter a valid due date.';
 const ITEM_REQUIRED_MESSAGE = 'Add at least one line item.';
 const ITEM_DESCRIPTION_MESSAGE = 'Each line item needs a description.';
 const TOO_LARGE_MESSAGE = 'This invoice is too large to save.';
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Reads a form field as a string; non-string values become empty. */
 function readField(formData: FormData, key: string): string {
@@ -91,8 +108,12 @@ function parseItems(formData: FormData): ParsedItem[] {
     const description = readField(formData, `items.${i}.description`).trim();
     if (description === '') throw new Error(ITEM_DESCRIPTION_MESSAGE);
 
-    const quantityThousandths = parseQuantityThousandths(readField(formData, `items.${i}.quantity`));
-    const unitPricePaise = parseRupeesToPaise(readField(formData, `items.${i}.unitPrice`));
+    const quantityThousandths = parseQuantityThousandths(
+      readField(formData, `items.${i}.quantity`),
+    );
+    const unitPricePaise = parseRupeesToPaise(
+      readField(formData, `items.${i}.unitPrice`),
+    );
     const taxInput = readField(formData, `items.${i}.taxRate`).trim();
     const taxRateBp = taxInput === '' ? null : parseTaxRateBp(taxInput);
 
@@ -141,7 +162,8 @@ export async function createInvoice(
   const businessId = session.business.businessId;
 
   const fieldErrors: InvoiceFieldErrors = {};
-  if (!UUID_PATTERN.test(clientId)) fieldErrors.clientId = CLIENT_REQUIRED_MESSAGE;
+  if (!UUID_PATTERN.test(clientId))
+    fieldErrors.clientId = CLIENT_REQUIRED_MESSAGE;
   if (!isValidIsoDate(dueDate)) fieldErrors.dueDate = DUE_DATE_MESSAGE;
 
   let items: ParsedItem[] = [];
@@ -173,58 +195,202 @@ export async function createInvoice(
   }
 
   const totals = computeInvoiceTotals(
-    items.map((item) => ({ lineTotalPaise: item.lineTotalPaise, taxRateBp: item.taxRateBp })),
+    items.map((item) => ({
+      lineTotalPaise: item.lineTotalPaise,
+      taxRateBp: item.taxRateBp,
+    })),
   );
   if (totals.totalPaise > MAX_PAISE) {
     return { formError: TOO_LARGE_MESSAGE, values };
   }
 
-  // Business-local issue date (Asia/Kolkata), formatted as YYYY-MM-DD.
-  const issueDate = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-
-  await db.transaction(async (tx) => {
-    const countRows = await tx
-      .select({ value: count() })
-      .from(invoices)
-      .where(scopeByBusiness(invoices.businessId, businessId));
-    const existing = countRows[0]?.value ?? 0;
-
-    const [invoice] = await tx
-      .insert(invoices)
-      .values({
-        businessId,
-        clientId: client.id,
-        invoiceNumber: formatInvoiceNumber(existing + 1),
+  const asOf = session.business.isDemo
+    ? '2026-11-21'
+    : todayInTimezone('Asia/Kolkata');
+  const issueDate = readField(formData, 'issue') || asOf,
+    draftId = readField(formData, 'id'),
+    custom = readField(formData, 'number').trim(),
+    projectName = readField(formData, 'project').trim();
+  if (
+    !isValidIsoDate(issueDate) ||
+    issueDate > asOf ||
+    dueDate < issueDate ||
+    !totals.totalPaise
+  )
+    return {
+      formError: 'Check the issue date, due date and positive invoice total.',
+      values,
+    };
+  if (
+    custom.length > 80 ||
+    projectName.length > 120 ||
+    items.length > 50 ||
+    items.some((i) => i.description.length > 500)
+  )
+    return { formError: 'Invoice fields exceed the supported size.', values };
+  const installment = z.object({
+    name: z.string().trim().min(1).max(120),
+    amount: z
+      .string()
+      .transform(parseRupeesToPaise)
+      .refine((n) => n > 0),
+    due: z.string().refine((d) => isValidIsoDate(d) && d >= issueDate),
+    expected: z
+      .string()
+      .refine((d) => !d || (isValidIsoDate(d) && d >= issueDate)),
+  });
+  let plan: z.infer<typeof installment>[];
+  try {
+    plan = z
+      .array(installment)
+      .max(30)
+      .parse(JSON.parse(readField(formData, 'milestones') || '[]'));
+  } catch {
+    return {
+      formError: 'Check the milestone names, amounts and dates.',
+      values,
+    };
+  }
+  if (
+    plan.length &&
+    plan.reduce((n, p) => n + p.amount, 0) !== totals.totalPaise
+  )
+    return {
+      formError: 'Milestone amounts must add up to the invoice total.',
+      values,
+    };
+  let resultId = '';
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .select({ id: businesses.id })
+        .from(businesses)
+        .where(eq(businesses.id, businessId))
+        .for('update');
+      let projectId: string | null = null;
+      if (projectName) {
+        const [prior] = await tx
+          .select()
+          .from(projects)
+          .where(
+            and(
+              eq(projects.businessId, businessId),
+              eq(projects.clientId, clientId),
+              eq(projects.name, projectName),
+            ),
+          );
+        projectId =
+          prior?.id ??
+          (
+            await tx
+              .insert(projects)
+              .values({ businessId, clientId, name: projectName })
+              .returning()
+          )[0].id;
+      }
+      const common = {
+        clientId,
         issueDate,
         dueDate,
-        status: 'DRAFT',
-        subtotalPaise: totals.subtotalPaise,
-        taxAmountPaise: totals.taxAmountPaise,
-        totalPaise: totals.totalPaise,
-        currency: 'INR',
-      })
-      .returning({ id: invoices.id });
-    if (!invoice) {
-      throw new Error('Invoice insert returned no row');
-    }
-
-    await tx.insert(invoiceItems).values(
-      items.map((item) => ({
-        invoiceId: invoice.id,
-        description: item.description,
-        quantity: quantityToNumeric(item.quantityThousandths),
-        unitPricePaise: item.unitPricePaise,
-        taxRateBp: item.taxRateBp,
-        lineTotalPaise: item.lineTotalPaise,
-      })),
-    );
-  });
+        projectId,
+        ...totals,
+        updatedAt: new Date(),
+      };
+      if (draftId) {
+        const [old] = await tx
+          .select()
+          .from(invoices)
+          .where(
+            and(eq(invoices.businessId, businessId), eq(invoices.id, draftId)),
+          )
+          .for('update');
+        if (!old || old.status !== 'DRAFT') throw Error('LOCKED');
+        await tx
+          .update(invoices)
+          .set({ ...common, invoiceNumber: custom || old.invoiceNumber })
+          .where(
+            and(eq(invoices.businessId, businessId), eq(invoices.id, draftId)),
+          );
+        resultId = draftId;
+        await tx
+          .delete(invoiceItems)
+          .where(eq(invoiceItems.invoiceId, draftId));
+        await tx
+          .delete(paymentMilestones)
+          .where(eq(paymentMilestones.invoiceId, draftId));
+      } else {
+        const sequence = await tx.execute(sql`
+          INSERT INTO invoice_counters(business_id,last_number)
+          SELECT ${businessId}, coalesce(max(substring(invoice_number from '^INV-([0-9]{1,8})$')::integer),0)+1
+          FROM invoices WHERE business_id=${businessId}
+          ON CONFLICT(business_id) DO UPDATE SET
+            last_number=greatest(invoice_counters.last_number+1,excluded.last_number),updated_at=now()
+          RETURNING last_number
+        `);
+        resultId = (
+          await tx
+            .insert(invoices)
+            .values({
+              ...common,
+              businessId,
+              invoiceNumber:
+                custom ||
+                formatInvoiceNumber(Number(sequence.rows[0].last_number)),
+              status: 'DRAFT',
+            })
+            .returning()
+        )[0].id;
+      }
+      await tx
+        .insert(invoiceItems)
+        .values(
+          items.map((i) => ({
+            invoiceId: resultId,
+            description: i.description,
+            quantity: quantityToNumeric(i.quantityThousandths),
+            unitPricePaise: i.unitPricePaise,
+            taxRateBp: i.taxRateBp,
+            lineTotalPaise: i.lineTotalPaise,
+          })),
+        );
+      if (plan.length)
+        await tx
+          .insert(paymentMilestones)
+          .values(
+            plan.map((p) => ({
+              invoiceId: resultId,
+              name: p.name,
+              expectedAmountPaise: p.amount,
+              dueDate: p.due,
+              expectedPaymentDate: p.expected || null,
+            })),
+          );
+      await tx
+        .insert(activities)
+        .values({
+          businessId,
+          actorUserId: session.user.id,
+          eventType: draftId ? 'Draft revised' : 'Draft created',
+          entityType: 'invoice',
+          entityId: resultId,
+          afterJson: { total: totals.totalPaise },
+        });
+    });
+  } catch (e) {
+    const code = (e as { cause?: { code?: string } }).cause?.code;
+    return {
+      formError:
+        code === '23505'
+          ? 'This invoice number is already in use.'
+          : 'Could not save the draft. Check that it is still editable.',
+      values,
+    };
+  }
 
   revalidatePath('/app/invoices');
-  redirect('/app/invoices');
+  if (draftId) {
+    revalidatePath('/app/invoices/' + resultId);
+    return {};
+  }
+  redirect('/app/invoices/' + resultId);
 }

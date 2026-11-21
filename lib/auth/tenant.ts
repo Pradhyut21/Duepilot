@@ -7,6 +7,7 @@ export interface BusinessContext {
   businessId: string;
   role: string;
   businessName: string;
+  isDemo: boolean;
 }
 
 /**
@@ -15,12 +16,15 @@ export interface BusinessContext {
  * business id from this context (or from a validated session), never from
  * client input.
  */
-export async function requireBusinessContext(userId: string): Promise<BusinessContext | null> {
+export async function requireBusinessContext(
+  userId: string,
+): Promise<BusinessContext | null> {
   const rows = await getDb()
     .select({
       businessId: businesses.id,
       role: businessMemberships.role,
       businessName: businesses.name,
+      isDemo: businesses.isDemo,
     })
     .from(businessMemberships)
     .innerJoin(businesses, eq(businesses.id, businessMemberships.businessId))

@@ -1,117 +1,110 @@
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { and, asc, desc, eq, isNull } from 'drizzle-orm';
-import { getDb } from '../../../lib/db/client';
-import { clients, invoices } from '../../../lib/db/schema';
-import { SESSION_COOKIE_NAME, validateSession } from '../../../lib/auth/session';
-import { scopeByBusiness } from '../../../lib/auth/tenant';
-import { EmptyState } from '../../../components/ui/EmptyState';
+import Link from 'next/link';
+import { workspace } from '@/lib/studio/data';
+import { invoiceBalances } from '@/lib/finance/forecast';
+import { Heading, Panel, Quiet } from '@/components/studio/Ui';
+import { dayLabel, money } from '@/lib/studio/format';
 import { InvoiceForm } from './InvoiceForm';
-
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Draft',
-  ISSUED: 'Issued',
-  PARTIALLY_PAID: 'Partially paid',
-  PAID: 'Paid',
-};
-
-const rupeeFormatter = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' });
-
-/** Formats integer paise as a rupee amount, e.g. 123450 -> "₹1,234.50". */
-function formatRupees(paise: number): string {
-  return rupeeFormatter.format(paise / 100);
-}
-
-export default async function InvoicesPage() {
-  const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  if (!token) {
-    redirect('/login');
-  }
-
-  const session = await validateSession(token);
-  if (!session) {
-    redirect('/login');
-  }
-
-  const businessId = session.business?.businessId;
-  if (!businessId) {
-    return (
-      <section className="space-y-6">
-        <h1 className="text-2xl font-bold text-ink">Invoices</h1>
-        <EmptyState
-          title="No business linked"
-          message="Your account is not linked to a business yet."
-        />
-      </section>
-    );
-  }
-
-  const db = getDb();
-
-  const [rows, clientOptions] = await Promise.all([
-    db
-      .select({
-        id: invoices.id,
-        invoiceNumber: invoices.invoiceNumber,
-        clientName: clients.name,
-        dueDate: invoices.dueDate,
-        status: invoices.status,
-        totalPaise: invoices.totalPaise,
-      })
-      .from(invoices)
-      .innerJoin(clients, eq(clients.id, invoices.clientId))
-      .where(scopeByBusiness(invoices.businessId, businessId))
-      .orderBy(desc(invoices.createdAt)),
-    db
-      .select({ id: clients.id, name: clients.name })
-      .from(clients)
-      .where(and(scopeByBusiness(clients.businessId, businessId), isNull(clients.archivedAt)))
-      .orderBy(asc(clients.name)),
-  ]);
-
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string }>;
+}) {
+  const s = await workspace(),
+    p = await searchParams;
+  const rows = invoiceBalances(s).filter(
+    (i) =>
+      (!p.status ||
+        i.status === p.status ||
+        (p.status === 'OVERDUE' &&
+          i.dueDate < s.asOf &&
+          i.status !== 'DRAFT' &&
+          i.outstanding > 0)) &&
+      [i.invoiceNumber, i.client]
+        .join(' ')
+        .toLowerCase()
+        .includes((p.q || '').toLowerCase()),
+  );
   return (
-    <section className="space-y-6">
-      <h1 className="text-2xl font-bold text-ink">Invoices</h1>
-
-      {rows.length === 0 ? (
-        <EmptyState title="No invoices yet" message="Create your first invoice below." />
-      ) : (
-        <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
-              <tr>
-                <th scope="col" className="px-4 py-2 font-semibold">Number</th>
-                <th scope="col" className="px-4 py-2 font-semibold">Client</th>
-                <th scope="col" className="px-4 py-2 font-semibold">Due date</th>
-                <th scope="col" className="px-4 py-2 font-semibold">Status</th>
-                <th scope="col" className="px-4 py-2 text-right font-semibold">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="px-4 py-3 font-medium text-ink">{row.invoiceNumber}</td>
-                  <td className="px-4 py-3 text-ink">{row.clientName}</td>
-                  <td className="px-4 py-3 text-slate-600">{row.dueDate}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {STATUS_LABELS[row.status] ?? row.status}
-                  </td>
-                  <td className="px-4 py-3 text-right text-ink">{formatRupees(row.totalPaise)}</td>
+    <>
+      <Heading
+        title="Invoices"
+        sub="Issue itemised invoices and track the balance on each one."
+      />
+      <Panel title="Invoice register">
+        <form className="filters">
+          <label>
+            Search
+            <input
+              name="q"
+              defaultValue={p.q}
+              placeholder="Invoice or client"
+            />
+          </label>
+          <label>
+            Status
+            <select name="status" defaultValue={p.status}>
+              <option value="">All statuses</option>
+              {['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'].map(
+                (v) => (
+                  <option key={v} value={v}>
+                    {v.replace('_', ' ').toLowerCase()}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+          <button className="button secondary">Filter</button>
+        </form>
+        {rows.length ? (
+          <div className="scroll">
+            <table>
+              <thead>
+                <tr>
+                  {[
+                    'Invoice',
+                    'Client',
+                    'Due date',
+                    'Status',
+                    'Outstanding',
+                  ].map((v) => (
+                    <th key={v}>{v}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="space-y-4 rounded-xl bg-white p-6 ring-1 ring-slate-200">
-        <h2 className="text-base font-semibold text-ink">Create an invoice</h2>
-        {clientOptions.length === 0 ? (
-          <EmptyState title="Add a client first" message="Invoices need a client. Add one on the Clients page." />
+              </thead>
+              <tbody>
+                {rows.map((i) => (
+                  <tr key={i.id}>
+                    <td>
+                      <Link href={'/app/invoices/' + i.id}>
+                        {i.invoiceNumber}
+                      </Link>
+                    </td>
+                    <td>{i.client}</td>
+                    <td>{dayLabel(i.dueDate)}</td>
+                    <td>
+                      {i.status.replace('_', ' ').toLowerCase()}
+                      {i.disputed ? ' · disputed' : ''}
+                    </td>
+                    <td>{money(i.outstanding)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <InvoiceForm clients={clientOptions} />
+          <Quiet>No invoices match this view.</Quiet>
         )}
-      </div>
-    </section>
+      </Panel>
+      <Panel title="Create an invoice" id="new">
+        {s.clients.some((c) => !c.archivedAt) ? (
+          <InvoiceForm
+            clients={s.clients.filter((c) => !c.archivedAt)}
+            today={s.asOf}
+          />
+        ) : (
+          <Link href="/app/clients">Add your first client</Link>
+        )}
+      </Panel>
+    </>
   );
 }

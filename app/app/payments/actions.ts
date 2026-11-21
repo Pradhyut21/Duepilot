@@ -1,15 +1,23 @@
 'use server';
 
 import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { and, eq, inArray, isNull, like } from 'drizzle-orm';
 import { getDb } from '../../../lib/db/client';
-import { clients, invoices, payments } from '../../../lib/db/schema';
+import {
+  clients,
+  invoices,
+  payments,
+  activities,
+} from '../../../lib/db/schema';
 import { getEnv } from '../../../lib/env';
-import { SESSION_COOKIE_NAME, validateSession } from '../../../lib/auth/session';
+import {
+  SESSION_COOKIE_NAME,
+  validateSession,
+} from '../../../lib/auth/session';
 import { isSameOriginRequest } from '../../../lib/auth/csrf';
 import { scopeByBusiness } from '../../../lib/auth/tenant';
+import { todayInTimezone } from '@/lib/records/invoice-dates';
 import { parseRupeesToPaise } from '../../../lib/money';
 import { allocatePayment } from '../../../lib/finance';
 import { isValidIsoDate } from '../../../lib/records/rules';
@@ -22,11 +30,15 @@ import {
 } from '../../../lib/payments/rules';
 
 export type PaymentFieldErrors = Partial<
-  Record<'clientId' | 'amount' | 'receivedDate' | 'method' | 'reference', string>
+  Record<
+    'clientId' | 'amount' | 'receivedDate' | 'method' | 'reference',
+    string
+  >
 >;
 
 /** Typed result returned to the payment form. */
 export type PaymentFormState = {
+  recorded?: boolean;
   formError?: string;
   /** Informational result, e.g. a submission that was already recorded. */
   notice?: string;
@@ -42,7 +54,8 @@ export type PaymentFormState = {
   };
 };
 
-const REQUEST_REJECTED_MESSAGE = 'Your request could not be verified. Refresh the page and try again.';
+const REQUEST_REJECTED_MESSAGE =
+  'Your request could not be verified. Refresh the page and try again.';
 const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Log in again.';
 const NO_BUSINESS_MESSAGE = 'Your account is not linked to a business yet.';
 const CLIENT_REQUIRED_MESSAGE = 'Choose a client.';
@@ -53,9 +66,12 @@ const DATE_MESSAGE = 'Enter a valid received date.';
 const METHOD_REQUIRED_MESSAGE = 'Enter how the payment was received.';
 const METHOD_MAX_LENGTH = 50;
 const REFERENCE_MAX_LENGTH = 200;
-const NO_OPEN_INVOICES_MESSAGE = 'This client has no invoices awaiting payment. Issue an invoice first.';
-const ALREADY_RECORDED_MESSAGE = 'This payment was already recorded. Nothing was added.';
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NO_OPEN_INVOICES_MESSAGE =
+  'This client has no invoices awaiting payment. Issue an invoice first.';
+const ALREADY_RECORDED_MESSAGE =
+  'This payment was already recorded. Nothing was added.';
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UNIQUE_VIOLATION_CODE = '23505';
 
 /** Reads a form field as a string; non-string values become empty. */
@@ -123,12 +139,23 @@ export async function recordPayment(
   }
   const businessId = session.business.businessId;
 
+  if (readField(formData, 'confirmed') !== 'on')
+    return {
+      formError: 'Confirm receipt before recording the payment.',
+      values,
+    };
+  if (
+    receivedDate >
+    (session.business.isDemo ? '2026-11-21' : todayInTimezone('Asia/Kolkata'))
+  )
+    return { formError: 'Received date cannot be in the future.', values };
   if (!UUID_PATTERN.test(submissionKey)) {
     return { formError: REQUEST_REJECTED_MESSAGE, values };
   }
 
   const fieldErrors: PaymentFieldErrors = {};
-  if (!UUID_PATTERN.test(clientId)) fieldErrors.clientId = CLIENT_REQUIRED_MESSAGE;
+  if (!UUID_PATTERN.test(clientId))
+    fieldErrors.clientId = CLIENT_REQUIRED_MESSAGE;
 
   let amountPaise = 0;
   if (amount === '') {
@@ -138,7 +165,8 @@ export async function recordPayment(
       amountPaise = parseRupeesToPaise(amount);
       if (amountPaise <= 0) fieldErrors.amount = AMOUNT_POSITIVE_MESSAGE;
     } catch (error) {
-      fieldErrors.amount = error instanceof Error ? error.message : AMOUNT_REQUIRED_MESSAGE;
+      fieldErrors.amount =
+        error instanceof Error ? error.message : AMOUNT_REQUIRED_MESSAGE;
     }
   }
 
@@ -183,10 +211,14 @@ export async function recordPayment(
           status: invoices.status,
           totalPaise: invoices.totalPaise,
           dueDate: invoices.dueDate,
+          issueDate: invoices.issueDate,
         })
         .from(invoices)
         .where(
-          and(scopeByBusiness(invoices.businessId, businessId), eq(invoices.clientId, client.id)),
+          and(
+            scopeByBusiness(invoices.businessId, businessId),
+            eq(invoices.clientId, client.id),
+          ),
         )
         .for('update');
 
@@ -212,7 +244,10 @@ export async function recordPayment(
         invoiceIds.length === 0
           ? []
           : await tx
-              .select({ invoiceId: payments.invoiceId, amountPaise: payments.amountPaise })
+              .select({
+                invoiceId: payments.invoiceId,
+                amountPaise: payments.amountPaise,
+              })
               .from(payments)
               .where(
                 and(
@@ -224,7 +259,10 @@ export async function recordPayment(
 
       const paidByInvoice = new Map<string, number>();
       for (const row of paymentRows) {
-        paidByInvoice.set(row.invoiceId, (paidByInvoice.get(row.invoiceId) ?? 0) + row.amountPaise);
+        paidByInvoice.set(
+          row.invoiceId,
+          (paidByInvoice.get(row.invoiceId) ?? 0) + row.amountPaise,
+        );
       }
 
       const withPaid = invoiceRows.map((row) => ({
@@ -257,17 +295,35 @@ export async function recordPayment(
         .filter((row) => isPayableStatus(row.status))
         .map((row) => ({
           id: row.id,
-          outstandingPaise: computeOutstandingPaise(row.totalPaise, row.paidPaise),
+          outstandingPaise: computeOutstandingPaise(
+            row.totalPaise,
+            row.paidPaise,
+          ),
           dueDate: row.dueDate,
         }))
         .filter((row) => row.outstandingPaise > 0);
 
-      const { allocations, unallocatedPaise } = allocatePayment(amountPaise, open);
+      const { allocations, unallocatedPaise } = allocatePayment(
+        amountPaise,
+        open,
+      );
       if (unallocatedPaise > 0) {
         // Cannot happen after the check above; throwing rolls back the transaction.
         throw new Error('Payment allocation did not cover the full amount.');
       }
 
+      if (
+        allocations.some(
+          (a) =>
+            receivedDate <
+            invoiceRows.find((i) => i.id === a.invoiceId)!.issueDate,
+        )
+      )
+        return {
+          status: 'exceeds',
+          outstandingPaise: payableOutstandingPaise,
+          message: 'Payment date precedes the invoice issue date.',
+        };
       // All allocation rows are inserted in this one statement, so either every
       // row is written or none is. Keys are deterministic per form render and invoice.
       await tx.insert(payments).values(
@@ -283,8 +339,19 @@ export async function recordPayment(
       );
 
       for (const allocation of allocations) {
+        await tx
+          .insert(activities)
+          .values({
+            businessId,
+            actorUserId: session.user.id,
+            eventType: 'Payment recorded',
+            entityType: 'invoice',
+            entityId: allocation.invoiceId,
+            afterJson: { amount: allocation.allocatedPaise },
+          });
         const invoiceOpen = open.find((row) => row.id === allocation.invoiceId);
-        const remaining = (invoiceOpen?.outstandingPaise ?? 0) - allocation.allocatedPaise;
+        const remaining =
+          (invoiceOpen?.outstandingPaise ?? 0) - allocation.allocatedPaise;
         await tx
           .update(invoices)
           .set({
@@ -317,10 +384,14 @@ export async function recordPayment(
     return { formError: NO_OPEN_INVOICES_MESSAGE, values };
   }
   if (outcome.status === 'exceeds') {
-    return { formError: outcome.message, outstandingPaise: outcome.outstandingPaise, values };
+    return {
+      formError: outcome.message,
+      outstandingPaise: outcome.outstandingPaise,
+      values,
+    };
   }
 
   revalidatePath('/app/payments');
   revalidatePath('/app/invoices');
-  redirect('/app/payments');
+  return { recorded: true, notice: 'Payment recorded.' };
 }

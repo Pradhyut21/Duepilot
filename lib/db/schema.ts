@@ -12,13 +12,24 @@ import {
   numeric,
   unique,
   check,
+  index,
 } from 'drizzle-orm/pg-core';
 
 const createdAtColumn = () =>
-  timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull();
+  timestamp('created_at', { withTimezone: true, mode: 'date' })
+    .defaultNow()
+    .notNull();
 
 const updatedAtColumn = () =>
-  timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull();
+  timestamp('updated_at', { withTimezone: true, mode: 'date' })
+    .defaultNow()
+    .notNull();
+
+export const requestWindows = pgTable('request_windows', {
+  key: text('key').primaryKey(),
+  attempts: integer('attempts').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -35,7 +46,10 @@ export const sessions = pgTable('sessions', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull().unique(),
-  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+  expiresAt: timestamp('expires_at', {
+    withTimezone: true,
+    mode: 'date',
+  }).notNull(),
   createdAt: createdAtColumn(),
 });
 
@@ -54,12 +68,18 @@ export const businesses = pgTable(
       .notNull()
       .default(0),
     openingBalanceDate: date('opening_balance_date', { mode: 'string' }),
+    horizon: integer('horizon').notNull().default(30),
+    useDueDates: boolean('use_due_dates').notNull().default(true),
+    logo: text('logo'),
     isDemo: boolean('is_demo').notNull().default(false),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),
   },
   (t) => [
-    check('businesses_opening_balance_nonneg', sql`${t.openingBalancePaise} >= 0`),
+    check(
+      'businesses_opening_balance_nonneg',
+      sql`${t.openingBalancePaise} >= 0`,
+    ),
   ],
 );
 
@@ -76,7 +96,12 @@ export const businessMemberships = pgTable(
     role: text('role').notNull(),
     createdAt: createdAtColumn(),
   },
-  (t) => [unique('business_memberships_business_user_unique').on(t.businessId, t.userId)],
+  (t) => [
+    unique('business_memberships_business_user_unique').on(
+      t.businessId,
+      t.userId,
+    ),
+  ],
 );
 
 export const clients = pgTable('clients', {
@@ -119,6 +144,7 @@ export const invoices = pgTable(
       .notNull()
       .references(() => clients.id),
     projectId: uuid('project_id').references(() => projects.id),
+    disputed: boolean('disputed').notNull().default(false),
     invoiceNumber: text('invoice_number').notNull(),
     issueDate: date('issue_date', { mode: 'string' }).notNull(),
     dueDate: date('due_date', { mode: 'string' }).notNull(),
@@ -131,6 +157,7 @@ export const invoices = pgTable(
     updatedAt: updatedAtColumn(),
   },
   (t) => [
+    index('invoices_business_due_idx').on(t.businessId, t.dueDate),
     unique('invoices_business_number_unique').on(t.businessId, t.invoiceNumber),
     check(
       'invoices_status_check',
@@ -139,7 +166,10 @@ export const invoices = pgTable(
     check('invoices_subtotal_nonneg', sql`${t.subtotalPaise} >= 0`),
     check('invoices_tax_nonneg', sql`${t.taxAmountPaise} >= 0`),
     check('invoices_total_nonneg', sql`${t.totalPaise} >= 0`),
-    check('invoices_due_on_or_after_issue_check', sql`${t.dueDate} >= ${t.issueDate}`),
+    check(
+      'invoices_due_on_or_after_issue_check',
+      sql`${t.dueDate} >= ${t.issueDate}`,
+    ),
   ],
 );
 
@@ -214,7 +244,11 @@ export const payments = pgTable(
     createdAt: createdAtColumn(),
   },
   (t) => [
-    unique('payments_business_idempotency_unique').on(t.businessId, t.idempotencyKey),
+    index('payments_invoice_idx').on(t.invoiceId),
+    unique('payments_business_idempotency_unique').on(
+      t.businessId,
+      t.idempotencyKey,
+    ),
     check('payments_amount_positive', sql`${t.amountPaise} > 0`),
   ],
 );
@@ -233,16 +267,30 @@ export const expenses = pgTable(
     dueDate: date('due_date', { mode: 'string' }).notNull(),
     paidDate: date('paid_date', { mode: 'string' }),
     status: text('status').notNull().default('UNPAID'),
+    notes: text('notes'),
     recurrenceRule: text('recurrence_rule'),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),
   },
   (t) => [
+    index('expenses_business_due_idx').on(t.businessId, t.dueDate),
     check('expenses_amount_positive', sql`${t.amountPaise} > 0`),
     check('expenses_status_check', sql`${t.status} in ('UNPAID', 'PAID')`),
   ],
 );
 
+export const billPayments = pgTable(
+  'bill_payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    expenseId: uuid('expense_id')
+      .notNull()
+      .references(() => expenses.id, { onDelete: 'cascade' }),
+    occurrence: date('occurrence', { mode: 'string' }).notNull(),
+    paidDate: date('paid_date', { mode: 'string' }).notNull(),
+  },
+  (t) => [unique('bill_occurrence_unique').on(t.expenseId, t.occurrence)],
+);
 export const paymentPromises = pgTable(
   'payment_promises',
   {
@@ -253,14 +301,23 @@ export const paymentPromises = pgTable(
     invoiceId: uuid('invoice_id')
       .notNull()
       .references(() => invoices.id, { onDelete: 'cascade' }),
+    paidAtConfirmation: integer('paid_at_confirmation').notNull().default(0),
     promisedAmountPaise: integer('promised_amount_paise').notNull(),
     promisedDate: date('promised_date', { mode: 'string' }).notNull(),
     sourceNote: text('source_note'),
     confirmationStatus: text('confirmation_status').notNull(),
     createdAt: createdAtColumn(),
-    supersededAt: timestamp('superseded_at', { withTimezone: true, mode: 'date' }),
+    supersededAt: timestamp('superseded_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
   },
-  (t) => [check('payment_promises_amount_positive', sql`${t.promisedAmountPaise} > 0`)],
+  (t) => [
+    check(
+      'payment_promises_amount_positive',
+      sql`${t.promisedAmountPaise} > 0`,
+    ),
+  ],
 );
 
 export const scenarios = pgTable('scenarios', {
@@ -269,7 +326,9 @@ export const scenarios = pgTable('scenarios', {
     .notNull()
     .references(() => businesses.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  assumptionsJson: jsonb('assumptions_json').$type<Record<string, unknown>>().notNull(),
+  assumptionsJson: jsonb('assumptions_json')
+    .$type<Record<string, unknown>>()
+    .notNull(),
   createdAt: createdAtColumn(),
 });
 
@@ -292,7 +351,9 @@ export const activities = pgTable('activities', {
   businessId: uuid('business_id')
     .notNull()
     .references(() => businesses.id, { onDelete: 'cascade' }),
-  actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+  actorUserId: uuid('actor_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
   eventType: text('event_type').notNull(),
   entityType: text('entity_type').notNull(),
   entityId: uuid('entity_id').notNull(),

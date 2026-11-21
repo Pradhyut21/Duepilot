@@ -14,7 +14,8 @@ import {
   SESSION_COOKIE_NAME,
 } from '../../lib/auth/session';
 import { isSameOriginRequest } from '../../lib/auth/csrf';
-import { checkAndRecordAttempt, resetAttempts, RATE_LIMIT_WINDOW_MS } from '../../lib/auth/rate-limit';
+import { admit, clearBucket } from '../../lib/auth/throttle';
+import { RATE_LIMIT_WINDOW_MS } from '../../lib/auth/rate-limit';
 import { signUpSchema, loginSchema } from '../../lib/validation/auth';
 
 type FieldName = 'displayName' | 'email' | 'password';
@@ -29,7 +30,8 @@ export type AuthFormState = {
 };
 
 const LOGIN_FAILED_MESSAGE = 'Email or password is incorrect.';
-const REQUEST_REJECTED_MESSAGE = 'Your request could not be verified. Refresh the page and try again.';
+const REQUEST_REJECTED_MESSAGE =
+  'Your request could not be verified. Refresh the page and try again.';
 const EMAIL_TAKEN_MESSAGE = 'An account with this email already exists.';
 const UNIQUE_VIOLATION = '23505';
 
@@ -64,7 +66,9 @@ function isUniqueViolation(error: unknown): boolean {
   const direct = (error as { code?: unknown }).code;
   const cause = (error as { cause?: unknown }).cause;
   const causeCode =
-    typeof cause === 'object' && cause !== null ? (cause as { code?: unknown }).code : undefined;
+    typeof cause === 'object' && cause !== null
+      ? (cause as { code?: unknown }).code
+      : undefined;
   return direct === UNIQUE_VIOLATION || causeCode === UNIQUE_VIOLATION;
 }
 
@@ -74,7 +78,9 @@ function isUniqueViolation(error: unknown): boolean {
  */
 let dummyHashPromise: Promise<string> | undefined;
 function getDummyHash(): Promise<string> {
-  dummyHashPromise ??= hashPassword('duepilot-timing-equaliser-not-a-real-password');
+  dummyHashPromise ??= hashPassword(
+    'duepilot-timing-equaliser-not-a-real-password',
+  );
   return dummyHashPromise;
 }
 
@@ -91,18 +97,35 @@ export async function signUpAction(
   const password = readField(formData, 'password');
   const values = { displayName: rawDisplayName, email: rawEmail };
 
-  const parsed = signUpSchema.safeParse({ displayName: rawDisplayName, email: rawEmail, password });
+  const parsed = signUpSchema.safeParse({
+    displayName: rawDisplayName,
+    email: rawEmail,
+    password,
+  });
   if (!parsed.success) {
     const fieldErrors: AuthFieldErrors = {};
     for (const issue of parsed.error.issues) {
       const key = issue.path[0];
-      if ((key === 'displayName' || key === 'email' || key === 'password') && !fieldErrors[key]) {
+      if (
+        (key === 'displayName' || key === 'email' || key === 'password') &&
+        !fieldErrors[key]
+      ) {
         fieldErrors[key] = issue.message;
       }
     }
     return { fieldErrors, values };
   }
 
+  if (
+    !(await admit(
+      'signup:' + ((await headers()).get('x-vercel-forwarded-for') || 'local'),
+      15,
+    ))
+  )
+    return {
+      formError: 'Signup limit reached. Try again in 15 minutes.',
+      values,
+    };
   const { displayName, email } = parsed.data;
   const db = getDb();
 
@@ -168,8 +191,7 @@ export async function loginAction(
   const values = { email: rawEmail };
 
   const rateKey = `login:${rawEmail.trim().toLowerCase()}`;
-  const attempt = checkAndRecordAttempt(rateKey);
-  if (!attempt.allowed) {
+  if (!(await admit(rateKey))) {
     const minutes = Math.ceil(RATE_LIMIT_WINDOW_MS / 60000);
     return {
       formError: `Too many login attempts. Try again in up to ${minutes} minutes.`,
@@ -182,8 +204,10 @@ export async function loginAction(
     const fieldErrors: AuthFieldErrors = {};
     for (const issue of parsed.error.issues) {
       const key = issue.path[0];
-      if (key === 'email' && !fieldErrors.email) fieldErrors.email = issue.message;
-      if (key === 'password' && !fieldErrors.password) fieldErrors.password = issue.message;
+      if (key === 'email' && !fieldErrors.email)
+        fieldErrors.email = issue.message;
+      if (key === 'password' && !fieldErrors.password)
+        fieldErrors.password = issue.message;
     }
     return { fieldErrors, values };
   }
@@ -197,13 +221,16 @@ export async function loginAction(
 
   // Always run one bcrypt comparison, even for unknown emails, to equalise timing.
   const hashToCheck = user?.passwordHash ?? (await getDummyHash());
-  const passwordMatches = await verifyPassword(parsed.data.password, hashToCheck);
+  const passwordMatches = await verifyPassword(
+    parsed.data.password,
+    hashToCheck,
+  );
 
   if (!user || !passwordMatches) {
     return { formError: LOGIN_FAILED_MESSAGE, values };
   }
 
-  resetAttempts(rateKey);
+  await clearBucket(rateKey);
   const session = await createSession(user.id);
   await setSessionCookie(session.token);
   redirect('/app');

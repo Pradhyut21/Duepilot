@@ -1,0 +1,9 @@
+.codebenders/
+.vscode/
+.env*
+.git/
+.next/
+node_modules/
+playwright-report/
+test-results/
+*.tsbuildinfo
