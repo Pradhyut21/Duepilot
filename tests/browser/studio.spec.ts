@@ -51,6 +51,7 @@ test('private account, ledger, forecast, reminder, persistence and sign-in', asy
     .fill('Wedding coverage');
   await page.getByLabel('Unit price').fill('1200.50');
   await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page).toHaveURL(/\/app\/invoices\/[\da-f-]+$/);
   const issue = page.getByRole('button', {
     name: 'Issue invoice',
     exact: true,
@@ -84,9 +85,9 @@ test('private account, ledger, forecast, reminder, persistence and sign-in', asy
   ]);
   await expect(reminder).toHaveValue('Follow-up on INV-0001 for ₹1,000.25. Please confirm your date.');
   await page.getByRole('button', { name: 'Copy reminder' }).click();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
-    '₹1,000.25',
-  );
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain('₹1,000.25');
   await page.goto('/app/expenses');
   await page.getByLabel('Description', { exact: true }).fill('Lens hire');
   await page.getByLabel('Category', { exact: true }).fill('Equipment rental');

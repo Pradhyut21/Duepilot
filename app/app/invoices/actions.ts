@@ -1,8 +1,6 @@
 'use server';
 
 import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../../../lib/db/client';
 import {
@@ -39,6 +37,7 @@ export type InvoiceFieldErrors = Partial<
 
 /** Typed result returned to the invoice form. */
 export type InvoiceFormState = {
+  savedInvoiceId?: string;
   formError?: string;
   fieldErrors?: InvoiceFieldErrors;
   values?: {
@@ -387,10 +386,5 @@ export async function createInvoice(
     };
   }
 
-  revalidatePath('/app/invoices');
-  if (draftId) {
-    revalidatePath('/app/invoices/' + resultId);
-    return {};
-  }
-  redirect('/app/invoices/' + resultId);
+  return { savedInvoiceId: resultId };
 }
