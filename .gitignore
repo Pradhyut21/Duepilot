@@ -1,0 +1,14 @@
+node_modules
+.env
+.env.local
+.next
+coverage
+out
+
+.codebenders/paused-initial-scaffold/
+.vercel/
+*.tsbuildinfo
+test-results/
+playwright-report/
+.env.*
+!.env.example
