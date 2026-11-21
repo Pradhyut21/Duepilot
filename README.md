@@ -8,9 +8,9 @@ DuePilot helps independent Indian wedding photographers and small studios see wh
 
 [![CI](https://github.com/Pradhyut21/Duepilot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Pradhyut21/Duepilot/actions/workflows/ci.yml)
 
-[Open DuePilot](https://duepilot-studio-ace.vercel.app/) · [Download the 25-second launch film](https://github.com/Pradhyut21/Duepilot/releases/download/v1.0.0-hackathon/duepilot-launch.mp4) · [Three-minute judge walkthrough](docs/DEMO_SCRIPT.md) · [Architecture and data model](docs/ARCHITECTURE.md) · [Verification record](docs/TEST_RESULTS.md)
+[Open DuePilot](https://duepilot-studio-ace.vercel.app/) · [Download the 2:10 launch film](https://github.com/Pradhyut21/Duepilot/releases/download/v1.0.0-hackathon/duepilot-launch-extended.mp4) · [Three-minute judge walkthrough](docs/DEMO_SCRIPT.md) · [Architecture and data model](docs/ARCHITECTURE.md) · [Verification record](docs/TEST_RESULTS.md)
 
-[![DuePilot launch film poster showing the baseline of ₹17,000 and projected shortfall of ₹18,000 after a 15-day delay](docs/media/launch-poster.jpg)](https://github.com/Pradhyut21/Duepilot/releases/download/v1.0.0-hackathon/duepilot-launch.mp4)
+[![DuePilot launch film poster showing the baseline of ₹17,000 and projected shortfall of ₹18,000 after a 15-day delay](docs/media/launch-poster.jpg)](https://github.com/Pradhyut21/Duepilot/releases/download/v1.0.0-hackathon/duepilot-launch-extended.mp4)
 
 [Film timecodes and credits](docs/LAUNCH_FILM.md)
 
