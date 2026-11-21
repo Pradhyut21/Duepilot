@@ -6,9 +6,13 @@ DuePilot helps independent Indian wedding photographers and small studios see wh
 
 **ACE Builders Hackathon 2026 · The One-Person Back Office**
 
-[Open DuePilot](https://duepilot-studio-ace.vercel.app/) · [Three-minute judge walkthrough](docs/DEMO_SCRIPT.md) · [Architecture and data model](docs/ARCHITECTURE.md) · [Verification record](docs/TEST_RESULTS.md)
+[![CI](https://github.com/Pradhyut21/Duepilot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Pradhyut21/Duepilot/actions/workflows/ci.yml)
 
-![DuePilot studio dashboard showing ₹18,000 recorded cash, outstanding invoices, scheduled bills, and a cash forecast](docs/media/dashboard.jpg)
+[Open DuePilot](https://duepilot-studio-ace.vercel.app/) · [Download the 25-second launch film](https://github.com/Pradhyut21/Duepilot/releases/download/v1.0.0-hackathon/duepilot-launch.mp4) · [Three-minute judge walkthrough](docs/DEMO_SCRIPT.md) · [Architecture and data model](docs/ARCHITECTURE.md) · [Verification record](docs/TEST_RESULTS.md)
+
+[![DuePilot launch film poster showing the baseline of ₹17,000 and projected shortfall of ₹18,000 after a 15-day delay](docs/media/launch-poster.jpg)](https://github.com/Pradhyut21/Duepilot/releases/download/v1.0.0-hackathon/duepilot-launch.mp4)
+
+[Film timecodes and credits](docs/LAUNCH_FILM.md)
 
 ## One late payment changes the month
 
@@ -22,7 +26,7 @@ In the live demo, Aperture Studio expects a ₹35,000 payment from Arjun & Anany
 
 ![Scenario Lab compares the baseline and delayed payment, with a projected shortfall of ₹18,000 and equipment rental among the affected obligations](docs/media/scenario-result.jpg)
 
-The dashboard, scenario and invoice below are captured from the deployed app using fictional demo data. Scenarios leave the recorded invoice and payment history intact.
+These screens come from the deployed app using fictional demo data. Scenarios leave the recorded invoice and payment history intact.
 
 ## Try the demonstration
 
@@ -32,7 +36,9 @@ The dashboard, scenario and invoice below are captured from the deployed app usi
 4. Use **Reset scenario** to return to the baseline. Studio settings can restore all sample records.
 
 <details>
-<summary>See the invoice and editable reminder</summary>
+<summary>See the studio dashboard, invoice and editable reminder</summary>
+
+![DuePilot studio dashboard showing ₹18,000 recorded cash, outstanding invoices, scheduled bills, and a cash forecast](docs/media/dashboard.jpg)
 
 ![Invoice INV-0001 for ₹55,000 with a ₹20,000 recorded payment and a ₹35,000 outstanding balance](docs/media/invoice.jpg)
 
