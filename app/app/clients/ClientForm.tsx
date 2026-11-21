@@ -10,7 +10,16 @@ const initialState: ClientFormState = {};
 
 /** Create-client form. Errors and entered values come back from createClient. */
 export function ClientForm() {
-  const [state, formAction] = useActionState(createClient, initialState);
+  const [state, formAction] = useActionState(
+    async (previous: ClientFormState, fields: FormData) => {
+      const result = await createClient(previous, fields);
+      if (result.createdClientId) {
+        window.location.assign('/app/clients/' + result.createdClientId);
+      }
+      return result;
+    },
+    initialState,
+  );
 
   return (
     <form action={formAction} className="space-y-4" noValidate>

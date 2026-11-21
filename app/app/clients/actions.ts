@@ -1,8 +1,6 @@
 'use server';
 
 import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
 import { getDb } from '../../../lib/db/client';
 import { clients } from '../../../lib/db/schema';
 import { getEnv } from '../../../lib/env';
@@ -16,6 +14,7 @@ export type ClientFieldErrors = Partial<Record<'name', string>>;
 
 /** Typed result returned to the client form. */
 export type ClientFormState = {
+  createdClientId?: string;
   formError?: string;
   fieldErrors?: ClientFieldErrors;
   values?: { name?: string; email?: string; phone?: string; notes?: string };
@@ -104,6 +103,5 @@ export async function createClient(
     })
     .returning({ id: clients.id });
 
-  revalidatePath('/app/clients');
-  redirect('/app/clients/' + created.id);
+  return { createdClientId: created.id };
 }

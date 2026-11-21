@@ -37,8 +37,9 @@ test('private account, ledger, forecast, reminder, persistence and sign-in', asy
   await page.goto('/app/clients');
   await page.getByLabel('Name', { exact: true }).fill('QA Photography Client');
   await page.getByRole('button', { name: 'Save client' }).click();
+  await expect(page).toHaveURL(/\/app\/clients\/[\da-f-]+$/);
   await expect(
-    page.getByText('QA Photography Client', { exact: true }),
+    page.getByRole('heading', { name: 'QA Photography Client', exact: true }),
   ).toBeVisible();
   await page.goto('/app/invoices');
   await page
